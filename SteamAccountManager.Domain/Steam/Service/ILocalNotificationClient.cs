@@ -14,7 +14,7 @@
         public string? Message { get; set; }
     }
 
-    public interface ILocalNotificationService
+    public interface ILocalNotificationClient
     {
         public void Send(Notification notification);
     }

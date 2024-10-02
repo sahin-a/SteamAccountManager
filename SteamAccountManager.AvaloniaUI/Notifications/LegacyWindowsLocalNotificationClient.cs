@@ -2,7 +2,7 @@
 
 namespace SteamAccountManager.AvaloniaUI.Notifications
 {
-    public class LegacyWindowsLocalNotificationService : ILocalNotificationService
+    public class LegacyWindowsLocalNotificationClient : ILocalNotificationClient
     {
         public void Send(Notification notification)
         {

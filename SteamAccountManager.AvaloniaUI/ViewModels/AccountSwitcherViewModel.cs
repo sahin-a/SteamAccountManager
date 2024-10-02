@@ -23,12 +23,12 @@ namespace SteamAccountManager.AvaloniaUI.ViewModels
         private readonly IGetAccountsWithDetailsUseCase _getAccountsUseCase;
         private readonly ISwitchAccountUseCase _switchAccountUseCase;
         private readonly AccountMapper _accountMapper;
-        private readonly ILocalNotificationService _notificationService;
+        private readonly LocalNotificationService _notificationService;
         private readonly IPrivacyConfigStorage _privacyConfigStorage;
         private readonly EventBus _eventBus;
         private readonly InfoService _infoService;
-        private readonly INotificationConfigStorage _notificationConfigStorage;
         private readonly IBlacklistedAccountsStorage _blacklistedAccountsStorage;
+        private readonly SwitcherViewSorter _sorter;
 
         public List<Account> AllAccounts { get; private set; } = new();
         public List<Account> WhitelistedAccounts { get; private set; } = new();
@@ -64,12 +64,12 @@ namespace SteamAccountManager.AvaloniaUI.ViewModels
             IGetAccountsWithDetailsUseCase getAccountsUseCase,
             ISwitchAccountUseCase switchAccountUseCase,
             AccountMapper accountMapper,
-            ILocalNotificationService notificationService,
+            LocalNotificationService notificationService,
             IPrivacyConfigStorage privacyConfigStorage,
-            INotificationConfigStorage notificationConfigStorage,
             IBlacklistedAccountsStorage blacklistedAccountsStorage,
             EventBus eventBus,
-            InfoService infoService
+            InfoService infoService,
+            SwitcherViewSorter sorter
         ) : base(screen)
         {
             _getAccountsUseCase = getAccountsUseCase;
@@ -77,10 +77,10 @@ namespace SteamAccountManager.AvaloniaUI.ViewModels
             _accountMapper = accountMapper;
             _notificationService = notificationService;
             _privacyConfigStorage = privacyConfigStorage;
-            _notificationConfigStorage = notificationConfigStorage;
             _blacklistedAccountsStorage = blacklistedAccountsStorage;
             _eventBus = eventBus;
             _infoService = infoService;
+            _sorter = sorter;
 
             AccountsForDisplay = new AdvancedObservableCollection<Account>();
             ProfileClickedCommand = new ProfileClickedCommand();
@@ -135,9 +135,8 @@ namespace SteamAccountManager.AvaloniaUI.ViewModels
 
         private void DisplayAccountsForCurrentState()
         {
-            AccountsForDisplay.SetItems(IsBlacklistToggleVisible
-                ? SortAccountsForManagement(AllAccounts)
-                : SortAccounts(WhitelistedAccounts));
+            var accounts = IsBlacklistToggleVisible ? AllAccounts : WhitelistedAccounts;
+            AccountsForDisplay.SetItems(accounts);
         }
 
         private Task ToggleBlacklistingMode() => Task.Run(() =>
@@ -177,23 +176,13 @@ namespace SteamAccountManager.AvaloniaUI.ViewModels
             await _switchAccountUseCase.Execute(string.Empty);
         }
 
-        private List<Account> SortAccountsForManagement(List<Account> accounts) => accounts
-            .OrderBy(x => x.IsBlacklisted)
-            .ToList();
-
-        private List<Account> SortAccounts(List<Account> accounts) => accounts
-            .OrderByDescending(x => x.IsLoggedIn)
-            .ThenByDescending(x => x.Rank.Level)
-            .ThenBy(x => x.Name)
-            .ThenBy(x => x.IsVacBanned)
-            .ToList();
-
-        private async Task<List<Account>> GetAccounts()
+        private async Task<List<Account>> RetrieveAccounts()
         {
             var steamAccounts = await _getAccountsUseCase.Execute();
             var accounts = (await Task.WhenAll(steamAccounts.ConvertAll(x => _accountMapper.FromSteamAccount(x))))
                 .ToList();
-            return SortAccounts(accounts);
+
+            return accounts;
         }
 
         private async void LoadAccounts()
@@ -204,20 +193,24 @@ namespace SteamAccountManager.AvaloniaUI.ViewModels
                 return;
 
             IsLoading = true;
-            var accounts = await GetAccounts();
-            var whitelistedAccounts = accounts.Where(x => !x.IsBlacklisted).ToList();
-            AllAccounts = accounts;
-            WhitelistedAccounts = whitelistedAccounts;
-            await Task.Run(DisplayAccountsForCurrentState);
+            
+            var accounts = await RetrieveAccounts();
+            AllAccounts = _sorter.SortAccountsForManagement(accounts);
+            WhitelistedAccounts = await GetWhitelistedAccounts(accounts);
+            DisplayAccountsForCurrentState();
+            
             IsLoading = false;
+        }
+
+        private async Task<List<Account>> GetWhitelistedAccounts(List<Account> accounts)
+        {
+            var whitelistedAccounts = accounts.Where(x => !x.IsBlacklisted);
+            return _sorter.SortAccounts(whitelistedAccounts);
         }
 
         private async void SendNotification(Account account)
         {
-            if ((await _notificationConfigStorage.Get())?.IsAllowedToSendNotification != true)
-                return;
-
-            _notificationService.Send
+            await _notificationService.Send
             (
                 new Notification
                 (

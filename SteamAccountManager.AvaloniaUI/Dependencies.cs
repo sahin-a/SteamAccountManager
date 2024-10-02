@@ -37,11 +37,14 @@ namespace SteamAccountManager.AvaloniaUI
             builder.RegisterType<InfoService>().SingleInstance();
             builder.RegisterType<AvatarService>().SingleInstance();
             builder.RegisterType<AccountMapper>().SingleInstance();
+            builder.RegisterType<SwitcherViewSorter>().SingleInstance();
 #if WINDOWS10_0_17763_0_OR_GREATER
             builder.RegisterType<WindowsLocalNotificationService>().As<ILocalNotificationService>().SingleInstance();
 #else
-            builder.RegisterType<LegacyWindowsLocalNotificationService>().As<ILocalNotificationService>().SingleInstance();
+            builder.RegisterType<LegacyWindowsLocalNotificationClient>().As<ILocalNotificationClient>().SingleInstance();
 #endif
+            
+            builder.RegisterType<LocalNotificationService>().SingleInstance();
 
             return builder;
         }
